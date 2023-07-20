@@ -1,4 +1,5 @@
 # %matplotlib inline
+import json
 import os
 import os.path
 import random
@@ -14,6 +15,7 @@ import xarray as xr
 from IPython.display import display
 from lightgbm import LGBMClassifier, LGBMRegressor
 from matplotlib import pyplot as plt
+from plotly import graph_objects as go
 from shapely.geometry import Polygon, mapping
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -113,6 +115,51 @@ def getDF(path, res, dd, firePer):
     z.close()
     # !rm data/gm.pkl
 
+def getInter(ds, factor):
+    if factor == 1:
+        return ds
+    else:
+        return ds.interp(lon=ds.lon.to_numpy()[0::factor],
+                         lat=ds.lat.to_numpy()[0::factor],
+                         method='linear')
+
+
+def plotInter(firePer, ds):
+    fig = go.Figure()
+    fig.add_choroplethmapbox(
+            geojson=json.loads(firePer.geometry.to_json()),
+            locations=firePer.index, z=firePer.YEAR_,  # color
+            hoverinfo='skip', showscale=False,
+            colorscale=[[0, 'rgba(0, 181, 204, 0.4)'], [
+                         1, 'rgba(0, 181, 204, 0.4)']],
+            marker_line_color='white',
+        )
+    for factor in [1,2,3]:
+        df_sub = getInter(ds, factor).air_temperature.mean('day').to_dataframe().dropna()
+        fig.add_scattermapbox(
+            lon=df_sub.index.get_level_values('lon'),
+            lat=df_sub.index.get_level_values('lat'),
+            below=0, name='factor '+str(factor),
+            mode='markers', hoverinfo='skip',
+            marker=go.scattermapbox.Marker(
+                color=df_sub.air_temperature.values, 
+                opacity=0.6, colorscale='viridis', size=10
+            )
+        )
+    fig.update_layout(margin=dict(t=0, b=0, r=0, l=0),
+                      legend=dict(orientation='h'),
+                      autosize=True, mapbox_style='carto-positron',
+                      mapbox=dict(zoom=7,
+                                  center=dict(lat=df_sub.reset_index().lat.median(),
+                                              lon=df_sub.reset_index().lon.median()),
+                                 ),             
+    )
+    fig.update_traces(visible="legendonly") 
+    fig.data[0].visible=True
+    fig.data[1].visible=True
+    fig.show()
+
+
 def xy(df, target):
     X = df.drop(columns=target + ['day'])
     y = df[target]
@@ -209,3 +256,67 @@ def plot_loss(history):
     plt.ylabel('Error')
     plt.legend()
     plt.grid(True)
+
+
+
+
+
+# +
+# dropdown = widgets.Dropdown(options=np.arange(1, 6), value=1,
+#                             description='factor')
+
+
+# def dropdownMenu(factor=None):
+#     fig, ax = plt.subplots()
+#     if factor == 1:
+#         dd = ds
+#     else:
+#         dd = ds.interp(lon=ds.lon.to_numpy()[0::factor],
+#                        lat=ds.lat.to_numpy()[0::factor],
+#                        method='linear')
+#     firePer.plot(alpha=0.6, linewidth=0, color='grey', ax=ax)
+#     dd.air_temperature.mean('day').plot(alpha=0.6, ax=ax)
+#     plt.title(f'Interpolated (factor={factor})')
+#     plt.tick_params(axis='both', labelsize=5)
+#     ax.set(xlabel='longitude', ylabel='latitude')
+#     plt.show()
+
+
+# widgets.interact(dropdownMenu, factor=dropdown)
+# display()
+
+# +
+# opt = cols + ['fireDates', 'ALARM_DATE',  'fire', 'time_series']
+# dropdown = widgets.Dropdown(options=opt, value='fireDates',
+#                             description='variable')
+
+
+# def dropdownMenu(variable=None):
+#     fig, ax = plt.subplots(figsize=(4, 3))
+#     if variable == 'time_series':
+#         aa = df.groupby('day').mean(numeric_only=True).drop(columns='fire')
+#         bb = pd.DataFrame(StandardScaler().fit_transform(aa),
+#                           columns=aa.columns, index=aa.index)
+#         bb.rolling(15).mean()[opt[-4:]].plot(alpha=0.5, ax=ax)
+#         plt.tick_params(axis='both', labelsize=5)
+#         plt.show()
+#         return
+#     elif variable == 'fireDates':
+#         x = [len(x) for x in getFireRange(firePer)]
+#         t = 'how many days did fires last:'
+#     elif variable == 'ALARM_DATE':
+#         x = firePer.ALARM_DATE.dt.month
+#         t = 'which month did fire start:'
+#     else:
+#         x = df[variable]
+#         t = variable
+
+#     sns.distplot(x, color='c', kde_kws={'linewidth': 0.5, 'color': 'grey'},
+#                  hist_kws={'linewidth': 1, 'edgecolor': 'white', 'alpha': 0.4})
+#     plt.title(t)
+#     plt.tick_params(axis='both', labelsize=5)
+#     plt.show()
+
+
+# widgets.interact(dropdownMenu, variable=dropdown)
+# display()
